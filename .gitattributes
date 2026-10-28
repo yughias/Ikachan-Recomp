@@ -1,0 +1,14 @@
+* text=auto
+
+*.wav binary
+*.pmd binary
+*.pbm binary
+*.dat binary
+*.ptx binary
+*.rec binary
+*.png binary
+*.ico binary
+*.bmp binary
+*.ttf binary
+*.dll binary
+*.a binary

@@ -1,0 +1,39 @@
+# Build directories
+build/
+build_*/
+bin/
+out/
+
+# Compiled binaries and intermediate objects
+*.exe
+*.dll
+*.so
+*.dylib
+*.obj
+*.o
+*.PBP
+*.pbp
+*.elf
+*.prx
+*.sfo
+PARAM.SFO
+
+# CMake & Ninja artifacts
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.ninja
+.ninja_*
+
+# Temporary & system metadata files
+*Zone.Identifier*
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+
+# In-game save files
+*.rec
+
+# Emscripten / Web output
+website/
