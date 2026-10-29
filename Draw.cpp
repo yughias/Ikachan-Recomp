@@ -416,80 +416,58 @@ void CortBox2(const RECT *rect, unsigned col, int surf_no)
 //Text
 void InitTextObject(char* name)
 {
-	//Get font width and height
-	unsigned int width, height;
-	switch (mag)
-	{
-		case 1:
-			height = 12;
-			width = 6;
-			break;
-		case 2:
-			height = 20;
-			width = 10;
-			break;
+	// Native monospace font: size 14 renders exactly 8px width per character
+	// and fits within the 16px line surface without clipping descenders (y, p, g, etc.)
+	font = TTF_OpenFont("Resource/font.ttf", 14);
+	if (!font) {
+		printf("Warning: Failed to load Resource/font.ttf: %s\n", TTF_GetError());
 	}
-
-	//Create font object
-	font = TTF_OpenFont("Resource/font.ttf", 18);
-	//font = CreateFont(height, width, 0, 0, FW_NORMAL, SDL_FALSE, SDL_FALSE, SDL_FALSE, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH | FF_DONTCARE, name);
 }
 
 void PutText(int x, int y, char* text, unsigned color, SDL_bool unk)
 {
-	//Lock backbuffer
-	//HDC hdc;
-	/*
-	backbuffer->GetDC(&hdc);
+	if (!font || !text || !text[0])
+		return;
 
-	//Draw text onto backbuffer
-	HGDIOBJ hgdiobj = SelectObject(hdc, font);
-	SetBkMode(hdc, 1);
-	SetTextColor(hdc, color);
-	TextOut(hdc, x * mag, y * mag, text, (int)strlen(text));
-	SelectObject(hdc, hgdiobj);
+	SDL_Color fg;
+	fg.r = (Uint8)(color & 0x0000FF);
+	fg.g = (Uint8)((color & 0x00FF00) >> 8);
+	fg.b = (Uint8)((color & 0xFF0000) >> 16);
+	fg.a = 255;
 
-	//Unlock backbuffer
-	backbuffer->ReleaseDC(hdc);
-	*/
+	SDL_Rect r = { x, y, 0, 0 };
 
-	SDL_Color bg = {0};
-
-	SDL_Rect r = {.x = x, .y = y};
-
-	SDL_Surface* textSurface = TTF_RenderText(font, text, *(SDL_Color*)(&color), bg);
-
-	SDL_BlitSurface(textSurface, NULL, sdlMainSurface, &r);
+	SDL_Surface* textSurface = TTF_RenderText_Solid(font, text, fg);
+	if (textSurface) {
+		SDL_BlitSurface(textSurface, NULL, sdlMainSurface, &r);
+		SDL_FreeSurface(textSurface);
+	}
 }
 
 void PutText2(int x, int y, char* text, unsigned color, int surf_no, SDL_bool unk)
 {
-	/*
-	//Lock surface
-	HDC hdc;
-	surf[surf_no]->GetDC(&hdc);
+	if (!font || !text || !text[0] || surf_no < 0 || surf_no >= MAX_SURFACE || !surf[surf_no])
+		return;
 
-	//Draw text onto surface
-	HGDIOBJ hgdiobj = SelectObject(hdc, font);
-	SetBkMode(hdc, 1);
-	SetTextColor(hdc, color);
-	TextOut(hdc, x * mag, y * mag, text, (int)strlen(text));
-	SelectObject(hdc, hgdiobj);
+	SDL_Color fg;
+	fg.r = (Uint8)(color & 0x0000FF);
+	fg.g = (Uint8)((color & 0x00FF00) >> 8);
+	fg.b = (Uint8)((color & 0xFF0000) >> 16);
+	fg.a = 255;
 
-	//Unlock surface
-	surf[surf_no]->ReleaseDC(hdc);
-	*/
+	SDL_Rect r = { x, y, 0, 0 };
 
-	SDL_Color bg = {0};
-
-	SDL_Rect r = {.x = x, .y = y};
-
-	SDL_Surface* textSurface = TTF_RenderText(font, text, *(SDL_Color*)(&color), bg);
-
-	SDL_BlitSurface(textSurface, NULL, surf[surf_no], &r);
+	SDL_Surface* textSurface = TTF_RenderText_Solid(font, text, fg);
+	if (textSurface) {
+		SDL_BlitSurface(textSurface, NULL, surf[surf_no], &r);
+		SDL_FreeSurface(textSurface);
+	}
 }
 
 void EndTextObject()
 {
-	TTF_CloseFont(font);
+	if (font) {
+		TTF_CloseFont(font);
+		font = NULL;
+	}
 }
