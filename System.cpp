@@ -8,7 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#if defined(PSP) || defined(__psp__) || defined(__PSP__)
+#ifdef __psp__
 #include <pspkernel.h>
 PSP_HEAP_SIZE_KB(-1024);
 #endif
@@ -98,11 +98,7 @@ int main(int argc, char** argv)
 
 	SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
 
-#if defined(PSP) || defined(__psp__) || defined(__PSP__)
-	Uint32 windowFlags = 0;
-#else
 	Uint32 windowFlags = SDL_WINDOW_RESIZABLE;
-#endif
 
 	sdlWindow = SDL_CreateWindow(lpCaption, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SURFACE_WIDTH, SURFACE_HEIGHT, windowFlags);
 	if(!sdlWindow){
@@ -110,7 +106,6 @@ int main(int argc, char** argv)
 		exit(EXIT_FAILURE);
 	}
 
-#if !defined(PSP) && !defined(__psp__) && !defined(__PSP__)
 	SDL_SetWindowMinimumSize(sdlWindow, SURFACE_WIDTH, SURFACE_HEIGHT);
 
 	SDL_Surface* icon = SDL_LoadBMP("Resource/icon.bmp");
@@ -118,7 +113,6 @@ int main(int argc, char** argv)
 		SDL_SetWindowIcon(sdlWindow, icon);
 		SDL_FreeSurface(icon);
 	}
-#endif
 	/*
 	SDL_SysWMinfo wmInfo;
 	SDL_VERSION(&wmInfo.version);

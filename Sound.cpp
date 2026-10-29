@@ -164,8 +164,7 @@ SDL_bool InitDirectSound(SDL_Window* /*hwnd*/)
         return SDL_FALSE;
     }
 
-    // Open audio: 44100 Hz on PSP (native hardware rate), 22050 Hz on PC
-#if defined(PSP) || defined(__psp__) || defined(__PSP__)
+    // Open audio device: 44100 Hz stereo with 2048 sample buffer works across all platforms (PSP, PC, Web)
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
     {
         if (Mix_OpenAudio(22050, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
@@ -174,13 +173,6 @@ SDL_bool InitDirectSound(SDL_Window* /*hwnd*/)
             return SDL_TRUE; // Don't abort game if audio device fails
         }
     }
-#else
-    if (Mix_OpenAudio(22050, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
-    {
-        fprintf(stderr, "Mix_OpenAudio failed: %s\n", Mix_GetError());
-        return SDL_TRUE;
-    }
-#endif
 
     // Allocate mixer channels from the pool
     Mix_AllocateChannels(NUM_CHANNELS);

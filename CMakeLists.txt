@@ -71,6 +71,7 @@ if(PSP OR CMAKE_SYSTEM_NAME STREQUAL "PSP")
             PREVIEW_PATH NULL
             TITLE "Ikachan"
             VERSION 01.00
+            MEMSIZE 1
         )
     endif()
 

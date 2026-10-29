@@ -213,15 +213,15 @@ static void MakePiyoPiyoSoundObjects()
 	//Make sure PiyoPiyo has been initialised
 	if (gPiyoPiyo.init)
 	{
+		// Release all previous melody objects first to consolidate free heap space on PSP-1000
+		for (int s = 400; s < 472; s++)
+			ReleaseSoundObject(s);
+
 		//Setup each melody track
 		for (int i = 0; i < 3; i++)
 		{
 			//Get octave
 			int octave = 1 << gPiyoPiyo.header.track[i].octave;
-			
-			//Release previous objects
-			for (int j = 0; j < 24; j++)
-				ReleaseSoundObject(400 + (i * 24) + j);
 			
 			//Compute bitmask of notes actually played in this track across the whole song
 			unsigned note_mask = 0;
