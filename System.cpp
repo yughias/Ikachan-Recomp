@@ -6,6 +6,12 @@
 #include "Game.h"
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
+
+#if defined(PSP) || defined(__psp__) || defined(__PSP__)
+#include <pspkernel.h>
+PSP_HEAP_SIZE_KB(-1024);
+#endif
 
 
 
@@ -53,13 +59,35 @@ int main(int argc, char** argv)
 	hMutex = CreateMutex(0, SDL_TRUE, lpMutexName);
 	*/
 
+	// Set working directory to application directory
+	if (argc > 0 && argv && argv[0])
+	{
+		char appDir[MAX_PATH];
+		strncpy(appDir, argv[0], MAX_PATH);
+		appDir[MAX_PATH - 1] = '\0';
+		char* lastSlash = strrchr(appDir, '/');
+		char* lastBackslash = strrchr(appDir, '\\');
+		if (lastBackslash > lastSlash) lastSlash = lastBackslash;
+		if (lastSlash)
+		{
+			*lastSlash = '\0';
+			chdir(appDir);
+		}
+	}
+
 	//Get module path
-	size_t i;
 	char* tmp = SDL_GetBasePath();
-	strncpy(gModulePath, tmp, MAX_PATH);
-	SDL_free(tmp);
-	for (i = strlen(gModulePath); gModulePath[i] != '\\' && i; i--);
-	gModulePath[i] = 0;
+	if (tmp)
+	{
+		strncpy(gModulePath, tmp, MAX_PATH);
+		gModulePath[MAX_PATH - 1] = '\0';
+		SDL_free(tmp);
+		chdir(gModulePath);
+	}
+	else
+	{
+		gModulePath[0] = '\0';
+	}
 
 	gWndWidth = SURFACE_WIDTH;
 	gWndHeight = SURFACE_HEIGHT;

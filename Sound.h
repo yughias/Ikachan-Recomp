@@ -48,4 +48,4 @@ void PlaySoundObject(int no, int mode);
 void ChangeSoundFrequency(int no, unsigned rate);
 void ChangeSoundVolume(int no, long volume);
 void ChangeSoundPan(int no, long pan);
-SDL_bool MakePiyoPiyoSoundObject(char *wave, unsigned char *envelope, int octave, int data_size, int no);
+SDL_bool MakePiyoPiyoSoundObject(char *wave, unsigned char *envelope, int octave, int data_size, int no, unsigned note_mask = 0);

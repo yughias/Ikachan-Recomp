@@ -165,9 +165,15 @@ void PiyoPiyoProc()
 		0, 96, 180, 224, 256, 288, 332, 420
 	};
 	
-	//Check if next step should be played
-	if (gPiyoPiyo.init && gPiyoPiyo.playing && SDL_GetTicks() >= (gPiyoPiyo.tick + gPiyoPiyo.header.wait))
+	if (!gPiyoPiyo.init || !gPiyoPiyo.playing)
+		return;
+
+	// Catch-up loop: process pending steps if time elapsed, capped at 4 iterations
+	// to maintain accurate tempo even during frame drops or vsync jitter on PSP.
+	int catchup = 0;
+	while (SDL_GetTicks() >= (gPiyoPiyo.tick + gPiyoPiyo.header.wait) && catchup < 4)
 	{
+		catchup++;
 		// Accumulate tick by wait to maintain mathematically exact tempo without drift
 		gPiyoPiyo.tick += gPiyoPiyo.header.wait;
 		if (SDL_GetTicks() - gPiyoPiyo.tick > 2000)
@@ -217,13 +223,21 @@ static void MakePiyoPiyoSoundObjects()
 			for (int j = 0; j < 24; j++)
 				ReleaseSoundObject(400 + (i * 24) + j);
 			
-			//Make new objects
+			//Compute bitmask of notes actually played in this track across the whole song
+			unsigned note_mask = 0;
+			for (int r = 0; r < gPiyoPiyo.header.records && r < MAX_RECORD; r++)
+			{
+				note_mask |= (gPiyoPiyo.record[i][r] & 0x00FFFFFF);
+			}
+
+			//Make new objects (passing note_mask to skip synthesizing unused notes)
 			MakePiyoPiyoSoundObject(
 				gPiyoPiyo.header.track[i].wave,
 				gPiyoPiyo.header.track[i].envelope,
 				octave, 
 				gPiyoPiyo.header.track[i].length,
-				400 + (24 * i));
+				400 + (24 * i),
+				note_mask);
 			
 			//Set track volume
 			for (int j = 0; j < 24; j++)

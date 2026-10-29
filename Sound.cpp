@@ -7,18 +7,34 @@
 #include <math.h>
 
 #define SE_MAX 512
+#define NUM_CHANNELS 48
 
 // SDL2_mixer channel assignments:
 // Each sound object slot gets its own Mix_Chunk stored here.
-// Playback is done on dedicated channels (channel index == slot index).
+// Playback channels are allocated dynamically from a pool of NUM_CHANNELS.
 static Mix_Chunk* gSoundChunk[SE_MAX];
 static Mix_Chunk* gSoundOrigChunk[SE_MAX]; // original before any frequency resampling
-static int        gSoundChannel[SE_MAX];   // last channel used to play this slot (-1 = none)
+static int        gSoundChannel[SE_MAX];   // mixer channel currently playing this slot (-1 = none)
+static int        gChannelSlot[NUM_CHANNELS]; // which sound slot is assigned to each mixer channel (-1 = none)
 
 // Volume and pan state
 static int  gSoundVolume[SE_MAX];  // 0..MIX_MAX_VOLUME
 static long gSoundPan[SE_MAX];     // 0..512 (256 = center)
 static unsigned gSoundRate[SE_MAX]; // rate passed to ChangeSoundFrequency (2195 = normal)
+
+static void OnChannelFinished(int channel)
+{
+    if (channel >= 0 && channel < NUM_CHANNELS)
+    {
+        int slot = gChannelSlot[channel];
+        if (slot >= 0 && slot < SE_MAX)
+        {
+            if (gSoundChannel[slot] == channel)
+                gSoundChannel[slot] = -1;
+        }
+        gChannelSlot[channel] = -1;
+    }
+}
 
 // -----------------------------------------------------------------------
 // Helper: Calculate SDL panning from DirectSound pan (0..512, 256 = center)
@@ -150,9 +166,9 @@ SDL_bool InitDirectSound(SDL_Window* /*hwnd*/)
 
     // Open audio: 44100 Hz on PSP (native hardware rate), 22050 Hz on PC
 #if defined(PSP) || defined(__psp__) || defined(__PSP__)
-    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
     {
-        if (Mix_OpenAudio(22050, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
+        if (Mix_OpenAudio(22050, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
         {
             fprintf(stderr, "Mix_OpenAudio failed: %s\n", Mix_GetError());
             return SDL_TRUE; // Don't abort game if audio device fails
@@ -166,8 +182,12 @@ SDL_bool InitDirectSound(SDL_Window* /*hwnd*/)
     }
 #endif
 
-    // Allocate one mixer channel per sound slot
-    Mix_AllocateChannels(SE_MAX);
+    // Allocate mixer channels from the pool
+    Mix_AllocateChannels(NUM_CHANNELS);
+    Mix_ChannelFinished(OnChannelFinished);
+
+    for (int i = 0; i < NUM_CHANNELS; i++)
+        gChannelSlot[i] = -1;
 
     for (int i = 0; i < SE_MAX; i++)
     {
@@ -177,7 +197,6 @@ SDL_bool InitDirectSound(SDL_Window* /*hwnd*/)
         gSoundVolume[i]    = MIX_MAX_VOLUME;
         gSoundPan[i]       = 256; // centre
         gSoundRate[i]      = 2195; // normal frequency
-        Mix_Volume(i, MIX_MAX_VOLUME);
     }
 
     return SDL_TRUE;
@@ -185,6 +204,7 @@ SDL_bool InitDirectSound(SDL_Window* /*hwnd*/)
 
 void EndDirectSound()
 {
+    Mix_ChannelFinished(NULL);
     for (int i = 0; i < SE_MAX; i++)
         ReleaseSoundObject(i);
 
@@ -202,8 +222,11 @@ void ReleaseSoundObject(int no)
 
     if (gSoundChannel[no] >= 0)
     {
-        Mix_HaltChannel(gSoundChannel[no]);
+        int ch = gSoundChannel[no];
         gSoundChannel[no] = -1;
+        if (ch >= 0 && ch < NUM_CHANNELS)
+            gChannelSlot[ch] = -1;
+        Mix_HaltChannel(ch);
     }
 
     if (gSoundChunk[no] != NULL)
@@ -260,26 +283,38 @@ void PlaySoundObject(int no, int mode)
         case SOUND_MODE_STOP:
             if (gSoundChannel[no] >= 0)
             {
-                Mix_HaltChannel(gSoundChannel[no]);
+                int ch = gSoundChannel[no];
                 gSoundChannel[no] = -1;
+                if (ch >= 0 && ch < NUM_CHANNELS)
+                    gChannelSlot[ch] = -1;
+                Mix_HaltChannel(ch);
             }
             break;
 
         case SOUND_MODE_PLAY:
         {
             if (gSoundChannel[no] >= 0)
-                Mix_HaltChannel(gSoundChannel[no]);
-
-            // Pre-configure channel volume BEFORE triggering playback to eliminate initial volume spikes / clicks
-            Mix_Volume(no, gSoundVolume[no]);
-
-            Uint8 left, right;
-            CalcPan(gSoundPan[no], &left, &right);
-
-            int ch = Mix_PlayChannel(no, gSoundChunk[no], 0);
-            gSoundChannel[no] = ch;
-            if (ch >= 0)
             {
+                int oldCh = gSoundChannel[no];
+                gSoundChannel[no] = -1;
+                if (oldCh >= 0 && oldCh < NUM_CHANNELS)
+                    gChannelSlot[oldCh] = -1;
+                Mix_HaltChannel(oldCh);
+            }
+
+            int ch = Mix_PlayChannel(-1, gSoundChunk[no], 0);
+            if (ch >= 0 && ch < NUM_CHANNELS)
+            {
+                int prevSlot = gChannelSlot[ch];
+                if (prevSlot >= 0 && prevSlot < SE_MAX)
+                    gSoundChannel[prevSlot] = -1;
+
+                gChannelSlot[ch] = no;
+                gSoundChannel[no] = ch;
+
+                Mix_Volume(ch, gSoundVolume[no]);
+                Uint8 left, right;
+                CalcPan(gSoundPan[no], &left, &right);
                 Mix_SetPanning(ch, left, right);
             }
             break;
@@ -288,17 +323,27 @@ void PlaySoundObject(int no, int mode)
         case SOUND_MODE_PLAY_LOOP:
         {
             if (gSoundChannel[no] >= 0)
-                Mix_HaltChannel(gSoundChannel[no]);
-
-            Mix_Volume(no, gSoundVolume[no]);
-
-            Uint8 left, right;
-            CalcPan(gSoundPan[no], &left, &right);
-
-            int ch = Mix_PlayChannel(no, gSoundChunk[no], -1); // -1 = loop forever
-            gSoundChannel[no] = ch;
-            if (ch >= 0)
             {
+                int oldCh = gSoundChannel[no];
+                gSoundChannel[no] = -1;
+                if (oldCh >= 0 && oldCh < NUM_CHANNELS)
+                    gChannelSlot[oldCh] = -1;
+                Mix_HaltChannel(oldCh);
+            }
+
+            int ch = Mix_PlayChannel(-1, gSoundChunk[no], -1); // -1 = loop forever
+            if (ch >= 0 && ch < NUM_CHANNELS)
+            {
+                int prevSlot = gChannelSlot[ch];
+                if (prevSlot >= 0 && prevSlot < SE_MAX)
+                    gSoundChannel[prevSlot] = -1;
+
+                gChannelSlot[ch] = no;
+                gSoundChannel[no] = ch;
+
+                Mix_Volume(ch, gSoundVolume[no]);
+                Uint8 left, right;
+                CalcPan(gSoundPan[no], &left, &right);
                 Mix_SetPanning(ch, left, right);
             }
             break;
@@ -327,7 +372,13 @@ void ChangeSoundFrequency(int no, unsigned rate)
     if (gSoundChunk[no] != gSoundOrigChunk[no])
     {
         if (gSoundChannel[no] >= 0)
-            Mix_HaltChannel(gSoundChannel[no]);
+        {
+            int ch = gSoundChannel[no];
+            gSoundChannel[no] = -1;
+            if (ch >= 0 && ch < NUM_CHANNELS)
+                gChannelSlot[ch] = -1;
+            Mix_HaltChannel(ch);
+        }
         Mix_FreeChunk(gSoundChunk[no]);
         gSoundChunk[no] = NULL;
     }
@@ -363,8 +414,11 @@ void ChangeSoundVolume(int no, long volume)
     int sdlVol = CalcVolume(volume);
     gSoundVolume[no] = sdlVol;
 
-    // Direct channel allocation (slot no == channel no): update channel volume immediately
-    Mix_Volume(no, sdlVol);
+    int ch = gSoundChannel[no];
+    if (ch >= 0 && ch < NUM_CHANNELS && Mix_Playing(ch) && gChannelSlot[ch] == no)
+    {
+        Mix_Volume(ch, sdlVol);
+    }
 }
 
 // 0..512, 256 is center.
@@ -375,11 +429,12 @@ void ChangeSoundPan(int no, long pan)
 
     gSoundPan[no] = pan;
 
-    if (gSoundChannel[no] >= 0 && Mix_Playing(gSoundChannel[no]))
+    int ch = gSoundChannel[no];
+    if (ch >= 0 && ch < NUM_CHANNELS && Mix_Playing(ch) && gChannelSlot[ch] == no)
     {
         Uint8 left, right;
         CalcPan(pan, &left, &right);
-        Mix_SetPanning(gSoundChannel[no], left, right);
+        Mix_SetPanning(ch, left, right);
     }
 }
 
@@ -389,7 +444,7 @@ void ChangeSoundPan(int no, long pan)
 
 static int freq_tbl[12] = { 1551, 1652, 1747, 1848, 1955, 2074, 2205, 2324, 2461, 2616, 2770, 2938 };
 
-SDL_bool MakePiyoPiyoSoundObject(char *wave, unsigned char *envelope, int octave, int data_size, int no)
+SDL_bool MakePiyoPiyoSoundObject(char *wave, unsigned char *envelope, int octave, int data_size, int no, unsigned note_mask)
 {
     if (no < 0 || no + 24 > SE_MAX || data_size <= 0)
         return SDL_FALSE;
@@ -428,6 +483,16 @@ SDL_bool MakePiyoPiyoSoundObject(char *wave, unsigned char *envelope, int octave
 
     for (int i = 0; i < 24; i++)
     {
+        // Release previous chunk at this slot
+        ReleaseSoundObject(no + i);
+
+        // If a mask of used notes was provided and this note is never used in the song,
+        // skip synthesizing and loading it to save significant RAM and CPU on embedded devices (PSP).
+        if (note_mask != 0 && !(note_mask & (1u << i)))
+        {
+            continue;
+        }
+
         // Synthesise waveform for note i
         int wp_sub = 0;
         int envelope_i;
@@ -458,14 +523,12 @@ SDL_bool MakePiyoPiyoSoundObject(char *wave, unsigned char *envelope, int octave
             wp_sub += freq;
         }
 
-        // Release previous chunk at this slot
-        ReleaseSoundObject(no + i);
-
         // Load into SDL_mixer safely via RWops (auto-converts to mixer native format)
         SDL_RWops* rw = SDL_RWFromMem(wav, total_wav_len);
         Mix_Chunk* chunk = Mix_LoadWAV_RW(rw, 1);
         if (chunk == NULL)
         {
+            fprintf(stderr, "MakePiyoPiyoSoundObject: Mix_LoadWAV_RW failed for note %d: %s\n", i, Mix_GetError());
             result = SDL_FALSE;
             break;
         }
@@ -477,7 +540,6 @@ SDL_bool MakePiyoPiyoSoundObject(char *wave, unsigned char *envelope, int octave
         gSoundVolume[no + i]    = MIX_MAX_VOLUME;
         gSoundPan[no + i]       = 256;
         gSoundRate[no + i]      = 2195;
-        Mix_Volume(no + i, MIX_MAX_VOLUME);
     }
 
     free(wav);
