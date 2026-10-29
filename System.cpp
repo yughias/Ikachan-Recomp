@@ -7,9 +7,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#if !defined(PSP) && !defined(__psp__) && !defined(__PSP__)
-#include "icon_data.h"
-#endif
 
 
 
@@ -88,14 +85,7 @@ int main(int argc, char** argv)
 #if !defined(PSP) && !defined(__psp__) && !defined(__PSP__)
 	SDL_SetWindowMinimumSize(sdlWindow, SURFACE_WIDTH, SURFACE_HEIGHT);
 
-	// Set window icon (loads from file or embedded fallback)
 	SDL_Surface* icon = SDL_LoadBMP("Resource/icon.bmp");
-	if (!icon) {
-		SDL_RWops* rw = SDL_RWFromConstMem(s_icon_bmp, sizeof(s_icon_bmp));
-		if (rw) {
-			icon = SDL_LoadBMP_RW(rw, 1);
-		}
-	}
 	if (icon) {
 		SDL_SetWindowIcon(sdlWindow, icon);
 		SDL_FreeSurface(icon);
