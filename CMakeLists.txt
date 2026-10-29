@@ -100,6 +100,7 @@ elseif(EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/Event.ptx@/Event.ptx"
         "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/Staff.ptx@/Staff.ptx"
         "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/Ika.rec@/Ika.rec"
+        "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/icon.png@/icon.png"
     )
 
     set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ".html")
@@ -207,6 +208,7 @@ if(NOT EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Words.ptx" "${CMAKE_BINARY_DIR}/Words.ptx"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Event.ptx" "${CMAKE_BINARY_DIR}/Event.ptx"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Staff.ptx" "${CMAKE_BINARY_DIR}/Staff.ptx"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/icon.png" "${CMAKE_BINARY_DIR}/icon.png"
         COMMENT "Copying game assets to build directory..."
     )
 endif()
