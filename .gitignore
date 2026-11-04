@@ -37,3 +37,6 @@ Thumbs.db
 
 # Emscripten / Web output
 website/
+
+dist_miyoo/
+.miyoo_cache/

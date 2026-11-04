@@ -1,5 +1,10 @@
 * text=auto
 
+*.sh text eol=lf
+*.notfound text eol=lf
+*.port text eol=lf
+*.cmake text eol=lf
+
 *.wav binary
 *.pmd binary
 *.pbm binary

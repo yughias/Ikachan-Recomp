@@ -43,7 +43,11 @@ int Random(int min, int max)
 
 int main(int argc, char** argv)
 {
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO);
+	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK | SDL_INIT_AUDIO);
+	if (SDL_NumJoysticks() > 0 && !SDL_IsGameController(0))
+	{
+		SDL_JoystickOpen(0);
+	}
 	TTF_Init();
 
 	RECT unused_rect = { 0, 0, SURFACE_WIDTH, SURFACE_HEIGHT };
@@ -98,9 +102,18 @@ int main(int argc, char** argv)
 
 	SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
 
+	int winW = SURFACE_WIDTH;
+	int winH = SURFACE_HEIGHT;
 	Uint32 windowFlags = SDL_WINDOW_RESIZABLE;
 
-	sdlWindow = SDL_CreateWindow(lpCaption, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SURFACE_WIDTH, SURFACE_HEIGHT, windowFlags);
+#if defined(MIYOO) || defined(__MIYOO__)
+	winW = 640;
+	winH = 480;
+	windowFlags = SDL_WINDOW_SHOWN;
+	SDL_ShowCursor(SDL_DISABLE);
+#endif
+
+	sdlWindow = SDL_CreateWindow(lpCaption, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, winW, winH, windowFlags);
 	if(!sdlWindow){
 		printf("error in creating sdl window!\n");
 		exit(EXIT_FAILURE);
@@ -184,13 +197,19 @@ void ActiveWindow()
 }
 
 //System task
+static SDL_bool gQuit = SDL_FALSE;
+
 SDL_bool SystemTask()
 {
+	if (gQuit)
+		return SDL_FALSE;
+
 	SDL_Event e;
 	while(SDL_PollEvent(&e)){
 		switch(e.type){
 			case SDL_QUIT:
-			return SDL_FALSE;
+				gQuit = SDL_TRUE;
+				return SDL_FALSE;
 
 			case SDL_CONTROLLERDEVICEADDED:
 				SDL_GameControllerOpen(e.cdevice.which);
@@ -222,8 +241,74 @@ SDL_bool SystemTask()
 			case SDL_CONTROLLER_BUTTON_Y:
 				gKey |= KEY_S;
 				break;
+			case SDL_CONTROLLER_BUTTON_BACK:
+			case SDL_CONTROLLER_BUTTON_GUIDE:
+				gQuit = SDL_TRUE;
+				return SDL_FALSE;
 			}
             break;
+
+			case SDL_JOYDEVICEADDED:
+				if (!SDL_IsGameController(e.jdevice.which))
+					SDL_JoystickOpen(e.jdevice.which);
+				break;
+
+			case SDL_JOYBUTTONDOWN:
+				switch(e.jbutton.button){
+					case 0: // A
+						gKey |= KEY_SPACE;
+						break;
+					case 1: // B
+						gKey |= KEY_Z;
+						break;
+					case 2: // X
+						gKey |= KEY_X;
+						break;
+					case 3: // Y
+						gKey |= KEY_S;
+						break;
+					case 8: // Select
+					case 10: // Menu
+						gQuit = SDL_TRUE;
+						return SDL_FALSE;
+				}
+				break;
+
+			case SDL_JOYBUTTONUP:
+				switch(e.jbutton.button){
+					case 0:
+						gKey &= ~KEY_SPACE;
+						break;
+					case 1:
+						gKey &= ~KEY_Z;
+						break;
+					case 2:
+						gKey &= ~KEY_X;
+						break;
+					case 3:
+						gKey &= ~KEY_S;
+						break;
+				}
+				break;
+
+			case SDL_JOYHATMOTION:
+				if (e.jhat.value & SDL_HAT_UP)
+					gKey |= KEY_UP;
+				else
+					gKey &= ~KEY_UP;
+				if (e.jhat.value & SDL_HAT_DOWN)
+					gKey |= KEY_DOWN;
+				else
+					gKey &= ~KEY_DOWN;
+				if (e.jhat.value & SDL_HAT_LEFT)
+					gKey |= KEY_LEFT;
+				else
+					gKey &= ~KEY_LEFT;
+				if (e.jhat.value & SDL_HAT_RIGHT)
+					gKey |= KEY_RIGHT;
+				else
+					gKey &= ~KEY_RIGHT;
+				break;
 
 			case SDL_CONTROLLERBUTTONUP:
 			switch(e.cbutton.button){
@@ -282,17 +367,31 @@ SDL_bool SystemTask()
 					gKey |= KEY_DOWN;
 					break;
 				case SDLK_SPACE:
+				case SDLK_u:
 					gKey |= KEY_SPACE;
 					break;
 				case SDLK_x:
+				case SDLK_LSHIFT:
+				case SDLK_o:
 					gKey |= KEY_X;
 					break;
 				case SDLK_z:
+				case SDLK_LCTRL:
+				case SDLK_i:
 					gKey |= KEY_Z;
 					break;
 				case SDLK_s:
+				case SDLK_LALT:
+				case SDLK_p:
 					gKey |= KEY_S;
 					break;
+				case SDLK_RCTRL:
+					gKey |= KEY_X;
+					break;
+				case SDLK_ESCAPE:
+				case SDLK_HOME:
+					gQuit = SDL_TRUE;
+					return SDL_FALSE;
 			}
 			break;
 
@@ -311,16 +410,26 @@ SDL_bool SystemTask()
 					gKey &= ~KEY_DOWN;
 					break;
 				case SDLK_SPACE:
+				case SDLK_u:
 					gKey &= ~KEY_SPACE;
 					break;
 				case SDLK_x:
+				case SDLK_LSHIFT:
+				case SDLK_o:
 					gKey &= ~KEY_X;
 					break;
 				case SDLK_z:
+				case SDLK_LCTRL:
+				case SDLK_i:
 					gKey &= ~KEY_Z;
 					break;
 				case SDLK_s:
+				case SDLK_LALT:
+				case SDLK_p:
 					gKey &= ~KEY_S;
+					break;
+				case SDLK_RCTRL:
+					gKey &= ~KEY_X;
 					break;
 			}
 			break;

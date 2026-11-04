@@ -1,0 +1,14 @@
+#!/bin/sh
+# Standalone Ports Script Template for Ikachan
+
+GameName="Ikachan"
+GameDir="Ikachan"
+GameExecutable="launch.sh"
+GameDataFile="NPChar.dat"
+
+KillAudioserver=1
+PerformanceMode=0
+
+Arguments=""
+
+/mnt/SDCARD/Emu/PORTS/launch_standalone.sh "$GameName" "$GameDir" "$GameExecutable" "$Arguments" "$GameDataFile" "$KillAudioserver" "$PerformanceMode"

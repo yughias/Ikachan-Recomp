@@ -2,9 +2,6 @@
 #include "PiyoPiyo.h"
 #include <string.h>
 #include <stdio.h>
-
-
-
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -27,6 +24,11 @@ SDL_Surface* sdlMainSurface;
 //Surfaces
 #define MAX_SURFACE 512
 SDL_Surface* surf[MAX_SURFACE] = {NULL};
+
+#if defined(MIYOO) || defined(__MIYOO__)
+static SDL_Renderer* gRenderer = NULL;
+static SDL_Texture* gTexture = NULL;
+#endif
 
 //Loaded font
 TTF_Font* font;
@@ -51,7 +53,8 @@ SDL_bool Flip_SystemTask(SDL_Window* hWnd)
 {
 	//Run system tasks while waiting for next frame
 	static unsigned timePrev;
-	SystemTask();
+	if (!SystemTask())
+		return SDL_FALSE;
 	while (SDL_GetTicks() < (timePrev + 20))
 	{
 		PiyoPiyoProc();
@@ -69,6 +72,15 @@ SDL_bool Flip_SystemTask(SDL_Window* hWnd)
 	else
 		timePrev += 20;
 
+#if defined(MIYOO) || defined(__MIYOO__)
+	if (gRenderer && gTexture && sdlMainSurface)
+	{
+		SDL_UpdateTexture(gTexture, NULL, sdlMainSurface->pixels, sdlMainSurface->pitch);
+		SDL_RenderClear(gRenderer);
+		SDL_RenderCopy(gRenderer, gTexture, NULL, NULL);
+		SDL_RenderPresent(gRenderer);
+	}
+#else
 	SDL_Surface* winSurf = SDL_GetWindowSurface(sdlWindow);
 	if (winSurf && sdlMainSurface)
 	{
@@ -78,36 +90,12 @@ SDL_bool Flip_SystemTask(SDL_Window* hWnd)
 		}
 		else
 		{
-			// Calculate aspect-ratio preserving rect (letterbox/pillarbox)
-			int win_w = winSurf->w;
-			int win_h = winSurf->h;
-			int dst_w, dst_h;
-
-			if (win_w * SURFACE_HEIGHT > win_h * SURFACE_WIDTH)
-			{
-				// Pillarbox (black bars on left/right)
-				dst_h = win_h;
-				dst_w = (win_h * SURFACE_WIDTH) / SURFACE_HEIGHT;
-			}
-			else
-			{
-				// Letterbox (black bars on top/bottom)
-				dst_w = win_w;
-				dst_h = (win_w * SURFACE_HEIGHT) / SURFACE_WIDTH;
-			}
-
-			SDL_Rect dstRect;
-			dstRect.x = (win_w - dst_w) / 2;
-			dstRect.y = (win_h - dst_h) / 2;
-			dstRect.w = dst_w;
-			dstRect.h = dst_h;
-
-			SDL_FillRect(winSurf, NULL, 0);
-			SDL_BlitScaled(sdlMainSurface, NULL, winSurf, &dstRect);
+			SDL_BlitScaled(sdlMainSurface, NULL, winSurf, NULL);
 		}
 	}
 
 	SDL_UpdateWindowSurface(sdlWindow);
+#endif
 
 	return SDL_TRUE;
 }
@@ -180,14 +168,31 @@ SDL_bool StartDirectDraw(SDL_Window* hWnd, int wndSize)
 	frontbuffer->SetClipper(clipper);
 	*/
 
+#if defined(MIYOO) || defined(__MIYOO__)
+	gRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+	if (!gRenderer)
+		gRenderer = SDL_CreateRenderer(sdlWindow, -1, 0);
+	if (gRenderer)
+	{
+		gTexture = SDL_CreateTexture(gRenderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, SURFACE_WIDTH, SURFACE_HEIGHT);
+		if (gTexture)
+			SDL_SetTextureBlendMode(gTexture, SDL_BLENDMODE_NONE);
+	}
+	sdlMainSurface = SDL_CreateRGBSurfaceWithFormat(0, SURFACE_WIDTH, SURFACE_HEIGHT, 16, SDL_PIXELFORMAT_RGB565);
+#else
 	SDL_Surface* winSurf = SDL_GetWindowSurface(sdlWindow);
 	sdlMainSurface = SDL_CreateRGBSurfaceWithFormat(0, SURFACE_WIDTH, SURFACE_HEIGHT, 32, winSurf ? winSurf->format->format : SDL_PIXELFORMAT_ABGR8888);
+#endif
 
 	return SDL_TRUE;
 }
 
 void EndDirectDraw(SDL_Window* hWnd)
 {
+#if defined(MIYOO) || defined(__MIYOO__)
+	if (gTexture) { SDL_DestroyTexture(gTexture); gTexture = NULL; }
+	if (gRenderer) { SDL_DestroyRenderer(gRenderer); gRenderer = NULL; }
+#endif
 	if (sdlMainSurface)
 	{
 		SDL_FreeSurface(sdlMainSurface);
@@ -226,17 +231,19 @@ SDL_bool MakeSurface_File(const char name[], int surf_no) //TODO: ASM accuracy
 	sprintf(path, "%s", name);
 	
 	//Make sure a surface can be made here
-	if (surf_no > MAX_SURFACE)
+	if (surf_no >= MAX_SURFACE || surf_no < 0)
 		return SDL_FALSE;
 	if (surf[surf_no] != NULL)
 		return SDL_FALSE;
 	
 	//Load image
-	surf[surf_no] = SDL_LoadBMP(name);
-	if(!surf[surf_no]){
+	SDL_Surface* loaded = SDL_LoadBMP(name);
+	if (!loaded) {
 		printf("error in loading %s\n", path);
 		return SDL_FALSE;
 	}
+
+	surf[surf_no] = loaded;
 	SDL_SetColorKey(surf[surf_no], SDL_TRUE, SDL_MapRGB(surf[surf_no]->format, 0, 0, 0));
 
 	printf("loaded %s in %d\n", path, surf_no);
@@ -296,13 +303,17 @@ SDL_bool MakeSurface_File(const char name[], int surf_no) //TODO: ASM accuracy
 SDL_bool MakeSurface_Generic(int bxsize, int bysize, int surf_no)
 {
 	//Make sure a surface can be made here
-	if (surf_no > MAX_SURFACE)
+	if (surf_no >= MAX_SURFACE || surf_no < 0)
 		return SDL_FALSE;
 	if (surf[surf_no] != NULL)
 		return SDL_FALSE;
 
 	//Create surface
-	surf[surf_no] = SDL_CreateRGBSurface(0, bxsize, bysize, 32, 0xFF0000, 0xFF00, 0xFF, 0xFF000000);
+	if (sdlMainSurface && sdlMainSurface->format)
+		surf[surf_no] = SDL_CreateRGBSurfaceWithFormat(0, bxsize, bysize, sdlMainSurface->format->BitsPerPixel, sdlMainSurface->format->format);
+	else
+		surf[surf_no] = SDL_CreateRGBSurface(0, bxsize, bysize, 32, 0xFF0000, 0xFF00, 0xFF, 0xFF000000);
+
 	if(surf[surf_no])
 		SDL_SetColorKey(surf[surf_no], SDL_TRUE, SDL_MapRGB(surf[surf_no]->format, 0, 0, 0));
 	/*
@@ -344,6 +355,9 @@ void BackupSurface(int surf_no, const RECT *rect)
 //Bitmap
 void PutBitmap3(const RECT *rcView, int x, int y, const RECT *rect, int surf_no)
 {
+	if (surf_no < 0 || surf_no >= MAX_SURFACE || !surf[surf_no])
+		return;
+
 	//Clip source rect
 	RECT rcWork = *rect;
 	if (x + rect->right - rect->left > rcView->right)
@@ -383,22 +397,28 @@ void PutBitmap3(const RECT *rcView, int x, int y, const RECT *rect, int surf_no)
 	SDL_Rect srcRect = {rcWork.left, rcWork.top, rcWork.right - rcWork.left, rcWork.bottom - rcWork.top};
 	SDL_Rect destRect = {rcSet.left, rcSet.top, 0, 0};		
 
-	SDL_BlitSurface(surf[surf_no], &srcRect, sdlMainSurface, &destRect);
+	if (srcRect.w > 0 && srcRect.h > 0)
+	{
+		SDL_BlitSurface(surf[surf_no], &srcRect, sdlMainSurface, &destRect);
+	}
 }
 
 //Cort box
 void CortBox(const RECT *rect, unsigned col)
 {
-	SDL_FillRect(sdlMainSurface, NULL, col);
+	if (!sdlMainSurface || !sdlMainSurface->format)
+		return;
+	Uint8 r = (Uint8)(col & 0xFF);
+	Uint8 g = (Uint8)((col >> 8) & 0xFF);
+	Uint8 b = (Uint8)((col >> 16) & 0xFF);
+	Uint32 pixel = SDL_MapRGB(sdlMainSurface->format, r, g, b);
+	SDL_FillRect(sdlMainSurface, NULL, pixel);
 }
 
 void CortBox2(const RECT *rect, unsigned col, int surf_no)
 {
-	//Construct rect descriptor
-	//static DDBLTFX ddbltfx;
-	//memset(&ddbltfx, 0, sizeof(DDBLTFX));
-	//ddbltfx.dwSize = sizeof(DDBLTFX);
-	//ddbltfx.dwFillColor = col;
+	if (surf_no < 0 || surf_no >= MAX_SURFACE || !surf[surf_no] || !surf[surf_no]->format)
+		return;
 
 	static RECT rcSet;
 	rcSet.left = rect->left * mag;
@@ -406,11 +426,13 @@ void CortBox2(const RECT *rect, unsigned col, int surf_no)
 	rcSet.right = rect->right * mag;
 	rcSet.bottom = rect->bottom * mag;
 
-	SDL_Rect sdlRect = {rcSet.left, rcSet.top, rcSet.right - rcSet.left, rcSet.bottom - rcSet.top};
-	SDL_FillRect(surf[surf_no], &sdlRect, col);
+	Uint8 r = (Uint8)(col & 0xFF);
+	Uint8 g = (Uint8)((col >> 8) & 0xFF);
+	Uint8 b = (Uint8)((col >> 16) & 0xFF);
+	Uint32 pixel = SDL_MapRGB(surf[surf_no]->format, r, g, b);
 
-	//Blit rect
-	//surf[surf_no]->Blt(&rcSet, 0, 0, DDBLT_COLORFILL | DDBLT_WAIT, &ddbltfx);
+	SDL_Rect sdlRect = {rcSet.left, rcSet.top, rcSet.right - rcSet.left, rcSet.bottom - rcSet.top};
+	SDL_FillRect(surf[surf_no], &sdlRect, pixel);
 }
 
 //Text

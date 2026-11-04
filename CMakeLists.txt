@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.13)
 project(ikachan C CXX)
 
 set(CMAKE_CXX_STANDARD 11)
@@ -107,6 +107,59 @@ elseif(EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ".html")
 
 # -------------------------------------------------------------------------
+# Platform: Miyoo Mini / OnionOS
+# -------------------------------------------------------------------------
+elseif(MIYOO OR CMAKE_SYSTEM_NAME MATCHES "Miyoo|miyoo")
+    message(STATUS "Configuring for Miyoo Mini (OnionOS)")
+
+    target_compile_definitions(${PROJECT_NAME} PRIVATE MIYOO=1 __MIYOO__=1)
+
+    if(DEFINED MIYOO_SYSROOT)
+        set(SYSROOT_PATH "${MIYOO_SYSROOT}")
+    else()
+        set(SYSROOT_PATH "/opt/mmiyoo/arm-buildroot-linux-gnueabihf/sysroot")
+    endif()
+
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        ${SYSROOT_PATH}/usr/include/SDL2
+        ${SYSROOT_PATH}/usr/include
+    )
+
+    target_link_options(${PROJECT_NAME} PRIVATE
+        -static-libgcc
+        -static-libstdc++
+    )
+
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        SDL2_mixer
+        SDL2_ttf
+        SDL2
+        freetype
+        png16
+        z
+        bz2
+        dl
+        pthread
+        rt
+        m
+    )
+
+    # Copy Miyoo runtime shared libraries to build/lib directory
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/lib"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SYSROOT_PATH}/usr/lib/libSDL2_ttf-2.0.so.0" "${CMAKE_BINARY_DIR}/lib/libSDL2_ttf-2.0.so.0"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SYSROOT_PATH}/usr/lib/libSDL2_mixer-2.0.so.0" "${CMAKE_BINARY_DIR}/lib/libSDL2_mixer-2.0.so.0"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SYSROOT_PATH}/usr/lib/libfreetype.so.6" "${CMAKE_BINARY_DIR}/lib/libfreetype.so.6"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SYSROOT_PATH}/usr/lib/libpng16.so.16" "${CMAKE_BINARY_DIR}/lib/libpng16.so.16"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SYSROOT_PATH}/usr/lib/libz.so.1" "${CMAKE_BINARY_DIR}/lib/libz.so.1"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SYSROOT_PATH}/usr/lib/libbz2.so.1.0" "${CMAKE_BINARY_DIR}/lib/libbz2.so.1.0"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SYSROOT_PATH}/usr/lib/libjson-c.so.5" "${CMAKE_BINARY_DIR}/lib/libjson-c.so.5"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/miyoo/launch.sh" "${CMAKE_BINARY_DIR}/launch.sh"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/miyoo/config.json" "${CMAKE_BINARY_DIR}/config.json"
+        COMMENT "Packaging Miyoo Mini libraries and launcher..."
+    )
+
+# -------------------------------------------------------------------------
 # Platform: PC (Windows / MinGW, Linux, macOS)
 # -------------------------------------------------------------------------
 else()
@@ -209,6 +262,7 @@ if(NOT EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Words.ptx" "${CMAKE_BINARY_DIR}/Words.ptx"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Event.ptx" "${CMAKE_BINARY_DIR}/Event.ptx"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Staff.ptx" "${CMAKE_BINARY_DIR}/Staff.ptx"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Ika.rec" "${CMAKE_BINARY_DIR}/Ika.rec"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/icon.png" "${CMAKE_BINARY_DIR}/icon.png"
         COMMENT "Copying game assets to build directory..."
     )
