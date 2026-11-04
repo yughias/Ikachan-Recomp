@@ -118,10 +118,14 @@ void PutNpChar03(NPCHAR *npc, FRAME *frame)
 	
 	if (npc->cond != SDL_FALSE)
 	{
+		int ani = (int)(signed char)npc->ani_no;
+		if (ani < 0) ani = 0;
+		if (ani > 3) ani = 3;
+
 		PutBitmap3(&grcFull,
 		           (npc->x / 0x400) - (frame->x / 0x400) - 2,
 		           (npc->y / 0x400) - (frame->y / 0x400) - 4,
-		           &rcNpc03[npc->ani_no],
+		           &rcNpc03[ani],
 		           SURFACE_ID_HARI + npc->code_char);
 	}
 }
@@ -439,14 +443,18 @@ void ActNpChar03(NPCHAR *npc)
 			if (++npc->ani_wait > 5)
 			{
 				npc->ani_wait = 0;
-				if (--npc->ani_no < 0)
+				if (npc->ani_no > 0)
+					npc->ani_no--;
+				else
 					npc->ani_no = 0;
 			}
 		}
 		else if (++npc->ani_wait > 2)
 		{
 			npc->ani_wait = 0;
-			if (++npc->ani_no > 3)
+			if (npc->ani_no < 3)
+				npc->ani_no++;
+			else
 				npc->ani_no = 3;
 		}
 	}

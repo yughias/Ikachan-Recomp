@@ -4,6 +4,8 @@ project(ikachan C CXX)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+add_compile_options(-fsigned-char)
+
 # Disable TLS verification by default so FetchContent works even without Windows CA bundle
 set(CMAKE_TLS_VERIFY OFF CACHE BOOL "Disable TLS verification for downloads" FORCE)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
