@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <stdint.h>
 
 #define SE_MAX 512
 #define NUM_CHANNELS 48
@@ -103,8 +104,7 @@ static Mix_Chunk* ResampleChunk(const Mix_Chunk* src, int orig_hz, int target_hz
 
     // Assuming S16 stereo (4 bytes per audio frame: 2 bytes L, 2 bytes R)
     int old_frames = src->alen / 4;
-    double ratio = (double)orig_hz / (double)target_hz;
-    int new_frames = (int)(old_frames * ratio);
+    int new_frames = (int)(((int64_t)old_frames * target_hz) / orig_hz);
     if (new_frames <= 0) return NULL;
     int new_len = new_frames * 4;
 
@@ -114,24 +114,28 @@ static Mix_Chunk* ResampleChunk(const Mix_Chunk* src, int orig_hz, int target_hz
     const Sint16* src_samples = (const Sint16*)src->abuf;
     Sint16* dst_samples = (Sint16*)new_buf;
 
+    int64_t step_fp = ((int64_t)orig_hz << 16) / target_hz;
+    int64_t src_fp = 0;
+
     for (int i = 0; i < new_frames; i++)
     {
-        double src_idx = (double)i / ratio;
-        int idx0 = (int)src_idx;
+        int idx0 = (int)(src_fp >> 16);
         int idx1 = idx0 + 1;
         if (idx0 >= old_frames) idx0 = old_frames - 1;
         if (idx1 >= old_frames) idx1 = old_frames - 1;
-        double frac = src_idx - (int)src_idx;
+        int frac = (int)(src_fp & 0xFFFF);
 
         // Left channel
-        double l0 = src_samples[idx0 * 2];
-        double l1 = src_samples[idx1 * 2];
-        dst_samples[i * 2] = (Sint16)(l0 + (l1 - l0) * frac);
+        int l0 = src_samples[idx0 * 2];
+        int l1 = src_samples[idx1 * 2];
+        dst_samples[i * 2] = (Sint16)(l0 + (((l1 - l0) * frac) >> 16));
 
         // Right channel
-        double r0 = src_samples[idx0 * 2 + 1];
-        double r1 = src_samples[idx1 * 2 + 1];
-        dst_samples[i * 2 + 1] = (Sint16)(r0 + (r1 - r0) * frac);
+        int r0 = src_samples[idx0 * 2 + 1];
+        int r1 = src_samples[idx1 * 2 + 1];
+        dst_samples[i * 2 + 1] = (Sint16)(r0 + (((r1 - r0) * frac) >> 16));
+
+        src_fp += step_fp;
     }
 
     Mix_Chunk* dst = (Mix_Chunk*)SDL_malloc(sizeof(Mix_Chunk));
@@ -151,6 +155,58 @@ static const char* ResNameToPath(const char* resname)
     static char buf[256];
     snprintf(buf, sizeof(buf), "Resource/%s.wav", resname);
     return buf;
+}
+
+// -----------------------------------------------------------------------
+// WAV Cache: avoids re-reading & re-converting identical WAVs from disk
+// (e.g. SYMBAL1 loaded 12 times, SNARE1 4 times, BASS1 2 times, etc.)
+// -----------------------------------------------------------------------
+#define MAX_CACHED_WAVS 64
+
+typedef struct {
+    char name[64];
+    Mix_Chunk* chunk;
+} CachedWav;
+
+static CachedWav gWavCache[MAX_CACHED_WAVS];
+static int gNumCachedWavs = 0;
+
+static Mix_Chunk* GetOrLoadWav(const char* resname)
+{
+    for (int i = 0; i < gNumCachedWavs; i++)
+    {
+        if (strcmp(gWavCache[i].name, resname) == 0)
+            return gWavCache[i].chunk;
+    }
+
+    const char* path = ResNameToPath(resname);
+    Mix_Chunk* chunk = Mix_LoadWAV(path);
+    if (chunk == NULL)
+    {
+        fprintf(stderr, "Mix_LoadWAV(\"%s\") failed: %s\n", path, Mix_GetError());
+        return NULL;
+    }
+
+    if (gNumCachedWavs < MAX_CACHED_WAVS)
+    {
+        snprintf(gWavCache[gNumCachedWavs].name, sizeof(gWavCache[gNumCachedWavs].name), "%s", resname);
+        gWavCache[gNumCachedWavs].chunk = chunk;
+        gNumCachedWavs++;
+    }
+
+    Mix_VolumeChunk(chunk, MIX_MAX_VOLUME);
+    return chunk;
+}
+
+static SDL_bool IsCachedWav(const Mix_Chunk* chunk)
+{
+    if (!chunk) return SDL_FALSE;
+    for (int i = 0; i < gNumCachedWavs; i++)
+    {
+        if (gWavCache[i].chunk == chunk)
+            return SDL_TRUE;
+    }
+    return SDL_FALSE;
 }
 
 // -----------------------------------------------------------------------
@@ -200,6 +256,15 @@ void EndDirectSound()
     for (int i = 0; i < SE_MAX; i++)
         ReleaseSoundObject(i);
 
+    // Free cached disk WAV chunks
+    for (int i = 0; i < gNumCachedWavs; i++)
+    {
+        if (gWavCache[i].chunk != NULL)
+            Mix_FreeChunk(gWavCache[i].chunk);
+        gWavCache[i].chunk = NULL;
+    }
+    gNumCachedWavs = 0;
+
     Mix_CloseAudio();
     SDL_QuitSubSystem(SDL_INIT_AUDIO);
 }
@@ -230,7 +295,9 @@ void ReleaseSoundObject(int no)
 
     if (gSoundOrigChunk[no] != NULL)
     {
-        Mix_FreeChunk(gSoundOrigChunk[no]);
+        // Only free if it wasn't provided by the shared WAV cache
+        if (!IsCachedWav(gSoundOrigChunk[no]))
+            Mix_FreeChunk(gSoundOrigChunk[no]);
         gSoundOrigChunk[no] = NULL;
     }
 }
@@ -243,13 +310,9 @@ SDL_bool InitSoundObject(const char* resname, int no)
 
     ReleaseSoundObject(no);
 
-    const char* path = ResNameToPath(resname);
-    Mix_Chunk* chunk = Mix_LoadWAV(path);
+    Mix_Chunk* chunk = GetOrLoadWav(resname);
     if (chunk == NULL)
-    {
-        fprintf(stderr, "Mix_LoadWAV(\"%s\") failed: %s\n", path, Mix_GetError());
         return SDL_FALSE;
-    }
 
     gSoundOrigChunk[no] = chunk;
     gSoundChunk[no]     = chunk;
@@ -257,8 +320,6 @@ SDL_bool InitSoundObject(const char* resname, int no)
     gSoundPan[no]       = 256;
     gSoundRate[no]      = 2195;
 
-    // Keep chunk at full volume; channel volume controls attenuation
-    Mix_VolumeChunk(chunk, MIX_MAX_VOLUME);
     return SDL_TRUE;
 }
 
@@ -487,31 +548,36 @@ SDL_bool MakePiyoPiyoSoundObject(char *wave, unsigned char *envelope, int octave
 
         // Synthesise waveform for note i
         int wp_sub = 0;
-        int envelope_i;
+        int freq;
+        if (i < 12)
+            freq = octave * freq_tbl[i] / 16;
+        else
+            freq = octave * freq_tbl[i - 12] / 8;
+
+        int env_step = (64 << 16) / data_size;
+        int env_pos = 0;
 
         for (int j = 0; j < data_size; j++)
         {
-            int sample = swave[(unsigned char)(wp_sub / 256)];
-            envelope_i = (j << 6) / data_size;
-            sample     = sample * envelope[envelope_i] / 128;
+            int sample = swave[(unsigned char)(wp_sub >> 8)];
+            int envelope_i = env_pos >> 16;
+            if (envelope_i > 63) envelope_i = 63;
+            env_pos += env_step;
+
+            sample = (sample * envelope[envelope_i]) >> 7;
 
             int s = sample + 128;
 
             // Smooth 32-sample tail fade to 128 to eliminate any end-of-buffer click
             if (j >= data_size - 32)
             {
-                s = 128 + ((s - 128) * (data_size - 1 - j)) / 32;
+                s = 128 + (((s - 128) * (data_size - 1 - j)) >> 5);
             }
 
             if (s < 0)   s = 0;
             if (s > 255) s = 255;
             wp[j] = (unsigned char)s;
 
-            int freq;
-            if (i < 12)
-                freq = octave * freq_tbl[i] / 16;
-            else
-                freq = octave * freq_tbl[i - 12] / 8;
             wp_sub += freq;
         }
 
