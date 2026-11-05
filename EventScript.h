@@ -57,3 +57,5 @@ void PutEventScriptCursor(EVENT_SCR *ptx);
 char EventScriptProc(EVENT_SCR *ptx, ITEMS *items, NPCHAR *npc, MAP *map, PIYOPIYO_CONTROL *piyocont, FADE *fade, FRAME *frame);
 void PutMsgBox(EVENT_SCR *ptx);
 void InitEventScript(EVENT_SCR *ptx);
+SDL_bool SaveRecord(ITEMS *items, MAP *map, NPCHAR *npc);
+SDL_bool LoadRecord(ITEMS *items, MAP *map, NPCHAR *npc);

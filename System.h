@@ -17,6 +17,7 @@
 extern unsigned gKey, gKeyTrg;
 extern unsigned gMouse, gMouseTrg, gMouseTrg2;
 extern SDL_Window* sdlWindow;
+extern SDL_bool gHomePressed;
 
 //Window size
 enum WND_SIZE

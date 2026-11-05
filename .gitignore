@@ -34,6 +34,7 @@ Thumbs.db
 
 # In-game save files
 *.rec
+*.state
 
 # Emscripten / Web output
 website/

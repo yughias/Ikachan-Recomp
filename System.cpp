@@ -8,7 +8,13 @@
 #include <string.h>
 #include <unistd.h>
 
-#ifdef __psp__
+//System task
+static SDL_bool gQuit = SDL_FALSE;
+SDL_bool gHomePressed = SDL_FALSE;
+static bool gBtnSelect = false;
+static bool gBtnStart = false;
+
+#if defined(__psp__) || defined(PSP)
 #include <pspkernel.h>
 PSP_HEAP_SIZE_KB(-1024);
 #endif
@@ -181,9 +187,9 @@ int main(int argc, char** argv)
 		//ReleaseMutex(hMutex);
 	}
 
-	//Release Ikachan mutex
-	//ReleaseMutex(hMutex);
-	return 1;
+	TTF_Quit();
+	SDL_Quit();
+	return 0;
 }
 
 void InactiveWindow()
@@ -196,11 +202,28 @@ void ActiveWindow()
 	bActive = SDL_TRUE;
 }
 
-//System task
-static SDL_bool gQuit = SDL_FALSE;
+//System task (state declared above)
+
+#if !defined(_WIN32)
+#include <signal.h>
+static void SignalHandler(int)
+{
+	gHomePressed = SDL_TRUE;
+	gQuit = SDL_TRUE;
+}
+#endif
 
 SDL_bool SystemTask()
 {
+#if !defined(_WIN32)
+	static bool signalsSet = false;
+	if (!signalsSet)
+	{
+		signal(SIGTERM, SignalHandler);
+		signal(SIGINT, SignalHandler);
+		signalsSet = true;
+	}
+#endif
 	if (gQuit)
 		return SDL_FALSE;
 
@@ -208,6 +231,7 @@ SDL_bool SystemTask()
 	while(SDL_PollEvent(&e)){
 		switch(e.type){
 			case SDL_QUIT:
+				gHomePressed = SDL_TRUE;
 				gQuit = SDL_TRUE;
 				return SDL_FALSE;
 
@@ -241,8 +265,28 @@ SDL_bool SystemTask()
 			case SDL_CONTROLLER_BUTTON_Y:
 				gKey |= KEY_S;
 				break;
-			case SDL_CONTROLLER_BUTTON_BACK:
-			case SDL_CONTROLLER_BUTTON_GUIDE:
+			case SDL_CONTROLLER_BUTTON_BACK: // Select
+				gBtnSelect = true;
+				if (gBtnStart)
+				{
+					gHomePressed = SDL_TRUE;
+					gQuit = SDL_TRUE;
+					return SDL_FALSE;
+				}
+				gKey |= KEY_S;
+				break;
+			case SDL_CONTROLLER_BUTTON_START: // Start
+				gBtnStart = true;
+				if (gBtnSelect)
+				{
+					gHomePressed = SDL_TRUE;
+					gQuit = SDL_TRUE;
+					return SDL_FALSE;
+				}
+				gKey |= KEY_S;
+				break;
+			case SDL_CONTROLLER_BUTTON_GUIDE: // Home / Guide button
+				gHomePressed = SDL_TRUE;
 				gQuit = SDL_TRUE;
 				return SDL_FALSE;
 			}
@@ -254,6 +298,56 @@ SDL_bool SystemTask()
 				break;
 
 			case SDL_JOYBUTTONDOWN:
+#if defined(__psp__) || defined(PSP)
+				switch (e.jbutton.button) {
+					case 0: // Triangle -> Inventory
+						gKey |= KEY_S;
+						break;
+					case 1: // Circle -> Dash
+						gKey |= KEY_X;
+						break;
+					case 2: // Cross -> Swim / Confirm
+						gKey |= KEY_Z;
+						break;
+					case 3: // Square -> Dash / Alt
+						gKey |= KEY_X;
+						break;
+					case 6: // D-pad Down
+						gKey |= KEY_DOWN;
+						break;
+					case 7: // D-pad Left
+						gKey |= KEY_LEFT;
+						break;
+					case 8: // D-pad Up
+						gKey |= KEY_UP;
+						break;
+					case 9: // D-pad Right
+						gKey |= KEY_RIGHT;
+						break;
+					case 10: // Select
+						gBtnSelect = true;
+						if (gBtnStart) { // SELECT + START exit combo
+							gHomePressed = SDL_TRUE;
+							gQuit = SDL_TRUE;
+							return SDL_FALSE;
+						}
+						gKey |= KEY_S;
+						break;
+					case 11: // Start
+						gBtnStart = true;
+						if (gBtnSelect) { // SELECT + START exit combo
+							gHomePressed = SDL_TRUE;
+							gQuit = SDL_TRUE;
+							return SDL_FALSE;
+						}
+						gKey |= KEY_S;
+						break;
+					case 12: // Home button
+						gHomePressed = SDL_TRUE;
+						gQuit = SDL_TRUE;
+						return SDL_FALSE;
+				}
+#else
 				switch(e.jbutton.button){
 					case 0: // A
 						gKey |= KEY_SPACE;
@@ -268,13 +362,68 @@ SDL_bool SystemTask()
 						gKey |= KEY_S;
 						break;
 					case 8: // Select
-					case 10: // Menu
+						gBtnSelect = true;
+						if (gBtnStart) { // SELECT + START exit combo
+							gHomePressed = SDL_TRUE;
+							gQuit = SDL_TRUE;
+							return SDL_FALSE;
+						}
+						gKey |= KEY_S;
+						break;
+					case 9: // Start
+						gBtnStart = true;
+						if (gBtnSelect) { // SELECT + START exit combo
+							gHomePressed = SDL_TRUE;
+							gQuit = SDL_TRUE;
+							return SDL_FALSE;
+						}
+						gKey |= KEY_S;
+						break;
+					case 10: // Menu (Miyoo Mini physical Menu key)
+						gHomePressed = SDL_TRUE;
 						gQuit = SDL_TRUE;
 						return SDL_FALSE;
 				}
+#endif
 				break;
 
 			case SDL_JOYBUTTONUP:
+#if defined(__psp__) || defined(PSP)
+				switch (e.jbutton.button) {
+					case 0: // Triangle
+						gKey &= ~KEY_S;
+						break;
+					case 1: // Circle
+						gKey &= ~KEY_X;
+						break;
+					case 2: // Cross
+						gKey &= ~KEY_Z;
+						break;
+					case 3: // Square
+						gKey &= ~KEY_X;
+						break;
+					case 6: // Down
+						gKey &= ~KEY_DOWN;
+						break;
+					case 7: // Left
+						gKey &= ~KEY_LEFT;
+						break;
+					case 8: // Up
+						gKey &= ~KEY_UP;
+						break;
+					case 9: // Right
+						gKey &= ~KEY_RIGHT;
+						break;
+					case 10: // Select
+						gBtnSelect = false;
+						gKey &= ~KEY_S;
+						break;
+					case 11: // Start
+						gBtnStart = false;
+						gKey &= ~KEY_S;
+						break;
+				}
+#else
 				switch(e.jbutton.button){
 					case 0:
 						gKey &= ~KEY_SPACE;
@@ -288,7 +437,16 @@ SDL_bool SystemTask()
 					case 3:
 						gKey &= ~KEY_S;
 						break;
+					case 8: // Select
+						gBtnSelect = false;
+						gKey &= ~KEY_S;
+						break;
+					case 9: // Start
+						gBtnStart = false;
+						gKey &= ~KEY_S;
+						break;
 				}
+#endif
 				break;
 
 			case SDL_JOYHATMOTION:
@@ -334,6 +492,14 @@ SDL_bool SystemTask()
 				gKey &= ~KEY_Z;
 				break;
 			case SDL_CONTROLLER_BUTTON_Y:
+				gKey &= ~KEY_S;
+				break;
+			case SDL_CONTROLLER_BUTTON_BACK:
+				gBtnSelect = false;
+				gKey &= ~KEY_S;
+				break;
+			case SDL_CONTROLLER_BUTTON_START:
+				gBtnStart = false;
 				gKey &= ~KEY_S;
 				break;
 			}
@@ -390,6 +556,7 @@ SDL_bool SystemTask()
 					break;
 				case SDLK_ESCAPE:
 				case SDLK_HOME:
+					gHomePressed = SDL_TRUE;
 					gQuit = SDL_TRUE;
 					return SDL_FALSE;
 			}

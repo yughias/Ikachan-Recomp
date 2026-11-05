@@ -29,6 +29,8 @@ set(SOURCES
     Player.cpp
     Sound.cpp
     System.cpp
+    SaveState.cpp
+    Config.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
@@ -39,6 +41,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # -------------------------------------------------------------------------
 if(PSP OR CMAKE_SYSTEM_NAME STREQUAL "PSP")
     message(STATUS "Configuring for Sony PlayStation Portable (PSP)")
+
+    target_compile_definitions(${PROJECT_NAME} PRIVATE PSP=1 __psp__=1)
 
     find_package(PkgConfig QUIET)
     if(PKG_CONFIG_FOUND)
@@ -102,8 +106,8 @@ elseif(EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/Words.ptx@/Words.ptx"
         "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/Event.ptx@/Event.ptx"
         "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/Staff.ptx@/Staff.ptx"
-        "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/Ika.rec@/Ika.rec"
         "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/icon.png@/icon.png"
+        "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/config.ini@/config.ini"
     )
 
     set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ".html")
@@ -264,8 +268,8 @@ if(NOT EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Words.ptx" "${CMAKE_BINARY_DIR}/Words.ptx"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Event.ptx" "${CMAKE_BINARY_DIR}/Event.ptx"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Staff.ptx" "${CMAKE_BINARY_DIR}/Staff.ptx"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/Ika.rec" "${CMAKE_BINARY_DIR}/Ika.rec"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/icon.png" "${CMAKE_BINARY_DIR}/icon.png"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/config.ini" "${CMAKE_BINARY_DIR}/config.ini"
         COMMENT "Copying game assets to build directory..."
     )
 endif()

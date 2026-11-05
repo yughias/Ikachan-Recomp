@@ -66,6 +66,7 @@ enum SURFACE_ID
 };
 
 extern RECT grcFull;
+extern SDL_Surface* sdlMainSurface;
 
 void SetClientOffset(int width, int height);
 SDL_bool Flip_SystemTask(SDL_Window* hWnd);

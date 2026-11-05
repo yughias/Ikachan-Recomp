@@ -13,6 +13,9 @@
 #include "Editor.h"
 #include "Boss.h"
 #include "Effect.h"
+#include "SaveState.h"
+#include "Config.h"
+#include "System.h"
 #include <stdio.h>
 
 unsigned gKeyTrg, gMouseTrg, gMouseTrg2;
@@ -100,6 +103,7 @@ SDL_bool Game(SDL_Window* hWnd)
 	
 	//Load generic data
 	LoadGenericData();
+	LoadConfig("config.ini");
 	
 	//Initalize game
 	InitFlags();
@@ -131,16 +135,44 @@ SDL_bool Game(SDL_Window* hWnd)
 	
 	//Load fade surface here for some reason
 	MakeSurface_File("Pbm/Fade.pbm", SURFACE_ID_FADE);
-	
+
+	//Load map event and data
+	sprintf(path, "%s", "Event.ptx");
+	if (!ReadEventScript(path, &event_scr))
+		return SDL_TRUE;
+	DebugPutText((char*)event_scr.data);
+
+	sprintf(path, "%s", "Pbm/Map1.pbm");
+	if (!LoadMapData(path, &map))
+		return SDL_TRUE;
+
 	//Start game (start in opening)
 	char mode = GAMEMODE_OPENING;
 	InitOpening(&opening);
 	char next_mode = mode;
-	
-	//Play opening music
-	piyocont.track = 3;
-	piyocont.mode = 1;
-	PiyoPiyoControl(&piyocont);
+
+	// Check if an OnionOS save state exists to resume
+	if (gConfig.autosave_on_exit && HasSaveState())
+	{
+		if (RestoreSaveState(&items, &map, npc, &piyocont, &frame, &event_scr))
+		{
+			fade.mode = FADE_MODE_NONE;
+			fade.mask = SDL_FALSE;
+			mode = GAMEMODE_GAMEPLAY;
+			next_mode = GAMEMODE_GAMEPLAY;
+
+			piyocont.mode = 1;
+			PiyoPiyoControl(&piyocont);
+		}
+	}
+
+	if (mode == GAMEMODE_OPENING)
+	{
+		//Play opening music
+		piyocont.track = 3;
+		piyocont.mode = 1;
+		PiyoPiyoControl(&piyocont);
+	}
 
 	//Opening
 	while (mode == GAMEMODE_OPENING)
@@ -165,16 +197,6 @@ SDL_bool Game(SDL_Window* hWnd)
 		}
 		PiyoPiyoProc();
 	}
-
-	//Load map event and data
-	sprintf(path, "%s", "Event.ptx");
-	if (!ReadEventScript(path, &event_scr))
-		return SDL_TRUE;
-	DebugPutText((char*)event_scr.data);
-
-	sprintf(path, "%s", "Pbm/Map1.pbm");
-	if (!LoadMapData(path, &map))
-		return SDL_TRUE;
 
 	//Run load script
 	event_scr.mode = 1;
@@ -329,6 +351,7 @@ SDL_bool Game(SDL_Window* hWnd)
 			if (gMC.dead)
 			{
 				gMC.dead = SDL_FALSE;
+				DeleteSaveState();
 				event_scr.mode = 1;
 				event_scr.event_no = 6;
 			}
@@ -375,7 +398,10 @@ SDL_bool Game(SDL_Window* hWnd)
 			//End frame
 			PutNumber(SURFACE_WIDTH - 48, 0, CountFramePerSecound());
 			if (!Flip_SystemTask(hWnd))
+			{
+				OnGameExit(&items, &map, npc, &piyocont, &frame, &event_scr);
 				return SDL_TRUE;
+			}
 			PiyoPiyoProc();
 		}
 		
@@ -402,7 +428,10 @@ SDL_bool Game(SDL_Window* hWnd)
 			
 			//End frame
 			if (!Flip_SystemTask(hWnd))
+			{
+				OnGameExit(&items, &map, npc, &piyocont, &frame, &event_scr);
 				return SDL_TRUE;
+			}
 			PiyoPiyoProc();
 		}
 		
@@ -437,7 +466,10 @@ SDL_bool Game(SDL_Window* hWnd)
 			
 			//End frame
 			if (!Flip_SystemTask(hWnd))
+			{
+				OnGameExit(&items, &map, npc, &piyocont, &frame, &event_scr);
 				return SDL_TRUE;
+			}
 		}
 	}
 	
@@ -467,5 +499,7 @@ SDL_bool Game(SDL_Window* hWnd)
 			return SDL_TRUE;
 		PiyoPiyoProc();
 	}
+	DeleteSaveState();
+	DeleteOnionScreenshots();
 	return SDL_FALSE;
 }
