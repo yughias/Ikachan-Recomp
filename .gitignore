@@ -36,8 +36,14 @@ Thumbs.db
 *.rec
 *.state
 
+# Packaging & dist directories
+dist_*/
+package/
+package_*/
+release_assets/
+*.zip
+*.tar.gz
+
 # Emscripten / Web output
 website/
-
-dist_miyoo/
 .miyoo_cache/

@@ -253,6 +253,8 @@ else()
             rpcrt4
             kernel32
         )
+    elseif(UNIX AND NOT APPLE)
+        target_link_libraries(${PROJECT_NAME} PRIVATE m pthread dl)
     endif()
 endif()
 

@@ -1,0 +1,238 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ master, main ]
+    tags:
+      - '*'
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Windows (x64)
+  # ---------------------------------------------------------------------------
+  build-windows:
+    name: Windows (x64)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2 / MinGW
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja zip
+
+      - name: Configure CMake
+        shell: msys2 {0}
+        run: cmake -B build_win -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build_win
+
+      - name: Package Windows Artifacts
+        shell: msys2 {0}
+        run: |
+          mkdir -p dist_win/ikachan
+          cp build_win/ikachan.exe dist_win/ikachan/
+          cp -r build_win/Pbm build_win/Pmd build_win/Resource dist_win/ikachan/
+          cp build_win/NPChar.dat build_win/Words.ptx build_win/Event.ptx build_win/Staff.ptx build_win/icon.png build_win/config.ini dist_win/ikachan/
+          cd dist_win
+          zip -r ../ikachan-windows-x64.zip ikachan
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ikachan-windows-x64
+          path: ikachan-windows-x64.zip
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # 2. Linux (x64)
+  # ---------------------------------------------------------------------------
+  build-linux:
+    name: Linux (x64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libpulse-dev \
+            libx11-dev \
+            libxext-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxfixes-dev \
+            libxrandr-dev \
+            libxss-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
+            libdrm-dev \
+            libgbm-dev \
+            ninja-build \
+            zip
+
+      - name: Configure CMake
+        run: cmake -B build_linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build_linux
+
+      - name: Package Linux Artifacts
+        run: |
+          mkdir -p dist_linux/ikachan
+          cp build_linux/ikachan dist_linux/ikachan/
+          cp -r build_linux/Pbm build_linux/Pmd build_linux/Resource dist_linux/ikachan/
+          cp build_linux/NPChar.dat build_linux/Words.ptx build_linux/Event.ptx build_linux/Staff.ptx build_linux/icon.png build_linux/config.ini dist_linux/ikachan/
+          chmod +x dist_linux/ikachan/ikachan
+          cd dist_linux
+          tar -czvf ../ikachan-linux-x64.tar.gz ikachan
+          zip -r ../ikachan-linux-x64.zip ikachan
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ikachan-linux-x64
+          path: |
+            ikachan-linux-x64.tar.gz
+            ikachan-linux-x64.zip
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # 3. WebAssembly / HTML5 (Emscripten)
+  # ---------------------------------------------------------------------------
+  build-web:
+    name: WebAssembly (HTML5)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install zip
+        run: sudo apt-get update && sudo apt-get install -y zip
+
+      - name: Build WebAssembly via Docker (emscripten/emsdk)
+        run: |
+          chmod +x build_web.sh
+          ./build_web.sh
+          sudo chown -R $USER:$USER .
+
+      - name: Package Web Artifacts
+        run: |
+          cd dist_web
+          zip -r ../ikachan-web.zip .
+
+      - name: Upload Web Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ikachan-web
+          path: ikachan-web.zip
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # 4. Sony PSP (EBOOT.PBP)
+  # ---------------------------------------------------------------------------
+  build-psp:
+    name: Sony PSP
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install zip
+        run: sudo apt-get update && sudo apt-get install -y zip
+
+      - name: Build PSP via Docker (pspdev/pspdev)
+        run: |
+          chmod +x build_psp.sh
+          ./build_psp.sh
+          sudo chown -R $USER:$USER .
+
+      - name: Package PSP Artifacts
+        run: |
+          mkdir -p dist_psp/ikachan
+          cp build_psp/EBOOT.PBP dist_psp/ikachan/
+          cp -r build_psp/Pbm build_psp/Pmd build_psp/Resource dist_psp/ikachan/
+          cp build_psp/NPChar.dat build_psp/Words.ptx build_psp/Event.ptx build_psp/Staff.ptx build_psp/icon.png build_psp/config.ini dist_psp/ikachan/
+          cd dist_psp
+          zip -r ../ikachan-psp.zip ikachan
+
+      - name: Upload PSP Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ikachan-psp
+          path: ikachan-psp.zip
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # 5. Miyoo Mini / OnionOS
+  # ---------------------------------------------------------------------------
+  build-miyoo:
+    name: Miyoo Mini (OnionOS)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install zip
+        run: sudo apt-get update && sudo apt-get install -y zip
+
+      - name: Build Miyoo Mini via Docker (bqcuongas/sdl2-miyoo)
+        run: |
+          chmod +x build_miyoo.sh
+          ./build_miyoo.sh
+          sudo chown -R $USER:$USER .
+
+      - name: Package Miyoo Mini Artifacts
+        run: |
+          cd dist_miyoo
+          zip -r ../ikachan-miyoo.zip Roms
+
+      - name: Upload Miyoo Mini Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ikachan-miyoo
+          path: ikachan-miyoo.zip
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # 6. Publish GitHub Release (Only on Tag Push)
+  # ---------------------------------------------------------------------------
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-windows, build-linux, build-web, build-psp, build-miyoo]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download All Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release_assets
+          merge-multiple: true
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release_assets/ikachan-windows-x64.zip
+            release_assets/ikachan-linux-x64.tar.gz
+            release_assets/ikachan-linux-x64.zip
+            release_assets/ikachan-web.zip
+            release_assets/ikachan-psp.zip
+            release_assets/ikachan-miyoo.zip
+          generate_release_notes: true
