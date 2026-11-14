@@ -7,6 +7,7 @@
 #include "fakeWindows.h"
 
 SDL_bool HasSaveState();
+SDL_bool ShouldForceResume();
 SDL_bool SaveState(ITEMS *items, MAP *map, NPCHAR *npc, PIYOPIYO_CONTROL *piyo, FRAME *frame, EVENT_SCR *event_scr);
 SDL_bool RestoreSaveState(ITEMS *items, MAP *map, NPCHAR *npc, PIYOPIYO_CONTROL *piyo, FRAME *frame, EVENT_SCR *event_scr);
 void DeleteSaveState();

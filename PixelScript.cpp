@@ -1,6 +1,8 @@
 #include "PixelScript.h"
 #include "EventScript.h"
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
 #define IS_COMMAND1(c1) (ptx->data[ptx->p_read] == '<' && ptx->data[ptx->p_read + 1] == (c1))
 #define IS_COMMAND2(c1, c2) (ptx->data[ptx->p_read] == '<' && ptx->data[ptx->p_read + 1] == (c1) && ptx->data[ptx->p_read + 2] == (c2))
@@ -11,19 +13,23 @@ RECT rcPsLine = { 0, 0, SURFACE_WIDTH, 16 };
 
 SDL_bool ReadPixelScript(PIX_SCR *ptx, char* path)
 {
-	//Get filesize
-	FILE* hFile = fopen(path, "rb");
-	fseek(hFile, 0, SEEK_END);
-	ptx->size = ftell(hFile);
-	fclose(hFile);
-	
-	//Allocate data
-	ptx->data = (char*)malloc(ptx->size + 1);
-	
 	//Open file
-	FILE *fp = fopen(path, "rt");
+	FILE *fp = fopen(path, "rb");
 	if (fp == NULL)
 		return SDL_FALSE;
+	
+	//Get filesize
+	fseek(fp, 0, SEEK_END);
+	ptx->size = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+	
+	//Allocate data (zeroed, so always NUL-terminated)
+	ptx->data = (char*)calloc(ptx->size + 1, 1);
+	if (ptx->data == NULL)
+	{
+		fclose(fp);
+		return SDL_FALSE;
+	}
 	
 	//Read file
 	fread(ptx->data, ptx->size, 1, fp);
@@ -86,18 +92,22 @@ int PixelScriptProc(PIX_SCR *ptx, PIYOPIYO_CONTROL *piyocont, SDL_bool ending)
 				CortBox2(&rcPsLine, 0x000000, SURFACE_ID_WORDS0 + i);
 
 				//Read new line
-				for (int j = 0; j < 40; j++)
+				memset(c, 0, sizeof(c));
+				for (int j = 0; j < 43; j++)
 				{
-					if (ptx->data[ptx->p_read] == ' ' || ptx->data[ptx->p_read] == '-')
+					char ch = ptx->data[ptx->p_read];
+					if (ch == ' ' || ch == '-')
 					{
 						//Type space
-						c[j] = ptx->data[ptx->p_read];
+						c[j] = ch;
 						ptx->p_read++;
 					}
-					else if (ptx->data[ptx->p_read] & 0x80)
+					else if (ch & 0x80)
 					{
 						//Type Shift-JIS
-						c[j] = ptx->data[ptx->p_read];
+						if (j + 1 >= 43)
+							break;
+						c[j] = ch;
 						(c + 1)[j++] = ptx->data[ptx->p_read + 1];
 						ptx->p_read += 2;
 					}
@@ -112,20 +122,12 @@ int PixelScriptProc(PIX_SCR *ptx, PIYOPIYO_CONTROL *piyocont, SDL_bool ending)
 					{
 						//Bring up "END" text
 						ptx->end = SDL_TRUE;
+						j--; //Don't leave a hole in the line buffer
+						ptx->p_read += 2; //Skip the "<s" command itself
 					}
-					else if (ptx->data[ptx->p_read] >= 'A' && ptx->data[ptx->p_read] <= 'z')
+					else if ((ch >= 'A' && ch <= 'z') || (ch >= '0' && ch <= '9') || (ch != 0 && strchr(".,/!?':()&>\"", ch)))
 					{
-						//English alphabet
-						c[j] = ptx->data[ptx->p_read++];
-					}
-					else if (ptx->data[ptx->p_read] >= '0' && ptx->data[ptx->p_read] <= '9')
-					{
-						//English numerals
-						c[j] = ptx->data[ptx->p_read++];
-					}
-					else if (ptx->data[ptx->p_read] == '.' || ptx->data[ptx->p_read] == '/' || ptx->data[ptx->p_read] == ',')
-					{
-						//Other specific characters
+						//English alphabet, numerals and printable punctuation
 						c[j] = ptx->data[ptx->p_read++];
 					}
 					else if (IS_COMMAND1('e'))
@@ -133,7 +135,7 @@ int PixelScriptProc(PIX_SCR *ptx, PIYOPIYO_CONTROL *piyocont, SDL_bool ending)
 						//Start gameplay
 						return 1;
 					}
-					else if (ptx->data[ptx->p_read] == '+')
+					else if (ch == '+')
 					{
 						//Print text onto line
 						c[j] = 0;
@@ -144,9 +146,17 @@ int PixelScriptProc(PIX_SCR *ptx, PIYOPIYO_CONTROL *piyocont, SDL_bool ending)
 						ptx->p_read += 2;
 						j = 999;
 					}
+					else if (ch == '<')
+					{
+						//Literal '<' (e.g. "<<<Ikachan>>>")
+						c[j] = ch;
+						ptx->p_read++;
+					}
 					else
 					{
+						//Skip unknown character without leaving a hole in the buffer
 						ptx->p_read++;
+						j--;
 					}
 				}
 			}

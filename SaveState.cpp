@@ -270,6 +270,16 @@ SDL_bool HasSaveState()
 	return SDL_FALSE;
 }
 
+SDL_bool ShouldForceResume()
+{
+	// OnionOS GameSwitcher resume request (flag file created by the launcher)
+	FILE *fp = fopen("/tmp/force_auto_load_state", "rb");
+	if (!fp)
+		return SDL_FALSE;
+	fclose(fp);
+	return SDL_TRUE;
+}
+
 SDL_bool SaveState(ITEMS *items, MAP *map, NPCHAR *npc, PIYOPIYO_CONTROL *piyo, FRAME *frame, EVENT_SCR *event_scr)
 {
 	FILE *fp = fopen("Ika.state", "wb");
@@ -328,9 +338,6 @@ SDL_bool SaveState(ITEMS *items, MAP *map, NPCHAR *npc, PIYOPIYO_CONTROL *piyo, 
 	}
 	fwrite(&ess, sizeof(ess), 1, fp);
 	fclose(fp);
-
-	// Update standard record as well
-	SaveRecord(items, map, npc);
 
 	return SDL_TRUE;
 }

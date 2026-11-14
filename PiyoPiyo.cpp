@@ -60,6 +60,14 @@ struct PIYOPIYO
 
 PIYOPIYO gPiyoPiyo;
 
+// The original game only ran PiyoPiyoProc once per 20 ms frame and advanced when
+// now > tick + wait, so the effective step is the next multiple of 20 ms above wait.
+static Uint32 PiyoPiyoStepMs()
+{
+	Uint32 wait = gPiyoPiyo.header.wait;
+	return (wait / 20 + 1) * 20;
+}
+
 SDL_bool InitPiyoPiyo()
 {
 	//Load drums
@@ -171,11 +179,12 @@ void PiyoPiyoProc()
 	// Catch-up loop: process pending steps if time elapsed, capped at 4 iterations
 	// to maintain accurate tempo even during frame drops or vsync jitter on PSP.
 	int catchup = 0;
-	while (SDL_GetTicks() >= (gPiyoPiyo.tick + gPiyoPiyo.header.wait) && catchup < 4)
+	const Uint32 step_ms = PiyoPiyoStepMs();
+	while (SDL_GetTicks() >= (gPiyoPiyo.tick + step_ms) && catchup < 4)
 	{
 		catchup++;
-		// Accumulate tick by wait to maintain mathematically exact tempo without drift
-		gPiyoPiyo.tick += gPiyoPiyo.header.wait;
+		// Accumulate tick by the step to maintain a drift-free tempo
+		gPiyoPiyo.tick += step_ms;
 		if (SDL_GetTicks() - gPiyoPiyo.tick > 2000)
 			gPiyoPiyo.tick = SDL_GetTicks();
 
@@ -192,7 +201,7 @@ void PiyoPiyoProc()
 			//Change pan
 			if (record & 0xFF000000)
 			{
-				int pan = record >> 24;
+				int pan = (record >> 24) & 7;
 				for (int j = 0; j < 24; j++)
 					ChangeSoundPan(400 + (i * 24) + j, pan_tbl[pan]);
 			}
@@ -315,7 +324,7 @@ void PiyoPiyoControl(PIYOPIYO_CONTROL *piyocont)
 			case 2:
 				//Play loaded track
 				gPiyoPiyo.position = -1;
-				gPiyoPiyo.tick = SDL_GetTicks() - gPiyoPiyo.header.wait;
+				gPiyoPiyo.tick = SDL_GetTicks() - PiyoPiyoStepMs();
 				gPiyoPiyo.playing = SDL_TRUE;
 				piyocont->volume = 0;
 				ChangePiyoPiyoVolume(piyocont);

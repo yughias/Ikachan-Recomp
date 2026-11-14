@@ -49,14 +49,19 @@ static void CalcPan(long pan, Uint8* left, Uint8* right)
     if (pan < 0)   pan = 0;
     if (pan > 512) pan = 512;
 
+    // DirectSound: SetPan((pan - 256) * 10) in 1/100 dB, attenuating the far side only
+    long mB = (pan - 256) * 10;
+    float att = powf(10.0f, -(float)(mB < 0 ? -mB : mB) / 2000.0f);
+    Uint8 far_side = (Uint8)(255.0f * att + 0.5f);
+
     if (pan <= 256)
     {
         *left  = 255;
-        *right = (Uint8)(pan * 255 / 256);
+        *right = far_side;
     }
     else
     {
-        *left  = (Uint8)((512 - pan) * 255 / 256);
+        *left  = far_side;
         *right = 255;
     }
 }
@@ -564,7 +569,7 @@ SDL_bool MakePiyoPiyoSoundObject(char *wave, unsigned char *envelope, int octave
             if (envelope_i > 63) envelope_i = 63;
             env_pos += env_step;
 
-            sample = (sample * envelope[envelope_i]) >> 7;
+            sample = (sample * envelope[envelope_i]) / 128;
 
             int s = sample + 128;
 

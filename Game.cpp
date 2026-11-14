@@ -151,8 +151,11 @@ SDL_bool Game(SDL_Window* hWnd)
 	InitOpening(&opening);
 	char next_mode = mode;
 
-	// Check if an OnionOS save state exists to resume
-	if (gConfig.autosave_on_exit && HasSaveState())
+	// Resume the autosave only via the "No" answer of the "Start a new game?" prompt,
+	// or directly when OnionOS GameSwitcher asks for it (force flag file).
+	bool resume_state = false;
+	bool state_restored = false;
+	if (gConfig.autosave_on_exit && ShouldForceResume() && HasSaveState())
 	{
 		if (RestoreSaveState(&items, &map, npc, &piyocont, &frame, &event_scr))
 		{
@@ -160,6 +163,8 @@ SDL_bool Game(SDL_Window* hWnd)
 			fade.mask = SDL_FALSE;
 			mode = GAMEMODE_GAMEPLAY;
 			next_mode = GAMEMODE_GAMEPLAY;
+			resume_state = true;
+			state_restored = true;
 
 			piyocont.mode = 1;
 			PiyoPiyoControl(&piyocont);
@@ -198,13 +203,16 @@ SDL_bool Game(SDL_Window* hWnd)
 		PiyoPiyoProc();
 	}
 
-	//Run load script
-	event_scr.mode = 1;
-	event_scr.x1C = 4;
-	event_scr.event_no = 1;
+	//Run load script (only when coming from the opening, not when resuming a state)
+	if (mode == GAMEMODE_LOAD)
+	{
+		event_scr.mode = 1;
+		event_scr.x1C = 4;
+		event_scr.event_no = 1;
 
-	//Load screen
-	next_mode = GAMEMODE_INTRO;
+		//Load screen
+		next_mode = GAMEMODE_INTRO;
+	}
 	while (mode == GAMEMODE_LOAD)
 	{
 		//Start frame
@@ -216,6 +224,7 @@ SDL_bool Game(SDL_Window* hWnd)
 		//Run load script
 		if (EventScriptProc(&event_scr, &items, npc, &map, &piyocont, &fade, &frame) == 2)
 		{
+			resume_state = gConfig.autosave_on_exit && HasSaveState();
 			fade.wait = 0;
 			fade.mode = 3;
 			next_mode = GAMEMODE_GAMEPLAY;
@@ -230,6 +239,19 @@ SDL_bool Game(SDL_Window* hWnd)
 		PiyoPiyoProc();
 	}
 	
+	//"No" to new game: restore the autosave on top of the loaded record
+	if (resume_state && !state_restored && mode == GAMEMODE_GAMEPLAY)
+	{
+		if (RestoreSaveState(&items, &map, npc, &piyocont, &frame, &event_scr))
+		{
+			state_restored = true;
+			fade.mode = FADE_MODE_NONE;
+			fade.mask = SDL_FALSE;
+			event_scr.mode = 0;
+			event_scr.msg_box = SDL_FALSE;
+		}
+	}
+
 	//Prepare for intro
 	if (gKey & KEY_S)
 		mode = GAMEMODE_EDITOR;
@@ -240,6 +262,10 @@ SDL_bool Game(SDL_Window* hWnd)
 		piyocont.mode = 1;
 		PiyoPiyoControl(&piyocont);
 		
+		//Starting a new game discards any autosave
+		DeleteSaveState();
+		DeleteOnionScreenshots();
+
 		//Run new game event when game starts
 		event_scr.event_no = 2;
 		event_scr.mode = 1;
@@ -279,16 +305,19 @@ SDL_bool Game(SDL_Window* hWnd)
 	if (!Flip_SystemTask(hWnd))
 		return SDL_TRUE;
 	
-	//Play theme song
-	piyocont.track = 0;
-	piyocont.mode = 1;
-	PiyoPiyoControl(&piyocont);
-	
-	//Initialize frame
-	frame.x = gMC.x - (SURFACE_WIDTH << 9);
-	frame.y = gMC.y - (SURFACE_HEIGHT << 9);
-	frame.mode = FRAME_MODE_MYCHAR;
-	frame.npc = 0;
+	if (!state_restored)
+	{
+		//Play theme song
+		piyocont.track = 0;
+		piyocont.mode = 1;
+		PiyoPiyoControl(&piyocont);
+		
+		//Initialize frame
+		frame.x = gMC.x - (SURFACE_WIDTH << 9);
+		frame.y = gMC.y - (SURFACE_HEIGHT << 9);
+		frame.mode = FRAME_MODE_MYCHAR;
+		frame.npc = 0;
+	}
 	
 	//Initialize editor
 	if (mode == GAMEMODE_EDITOR)

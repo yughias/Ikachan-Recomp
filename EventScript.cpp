@@ -595,7 +595,8 @@ char EventScriptProc(EVENT_SCR *ptx, ITEMS *items, NPCHAR *npc, MAP *map, PIYOPI
 		//Print English alphabet
 		if (
 			(ptx->data[ptx->p_read] >= 'A' && ptx->data[ptx->p_read] <= 'z') ||
-			ptx->data[ptx->p_read] == ' ' || ptx->data[ptx->p_read] == '-')
+			ptx->data[ptx->p_read] == ' ' || ptx->data[ptx->p_read] == '-' ||
+			ptx->data[ptx->p_read] == '!' || ptx->data[ptx->p_read] == '?' || ptx->data[ptx->p_read] == 39)
 		{
 			//Type wait
 			ptx->msg_box = SDL_TRUE;
